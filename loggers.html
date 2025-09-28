@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Expulsion Dynamics Logger</title>
+  <style>
+  :root{
+    --bg:#0b0c10;
+    --card:#16181d;
+    --text:#e6e6e6;
+    --muted:#a8b0ba;
+    --accent:#2e7dd7;
+    --danger:#c84545;
+    --border:#2a2f36;
+    --table:#0f1115;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  header,footer{padding:16px 20px}
+  header h1{margin:0 0 4px 0}
+  .sub{color:var(--muted);margin:0}
+  main{max-width:1100px;margin:0 auto;padding:8px 20px 40px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin:14px 0}
+  h2{margin:0 0 12px 0;font-size:1.2rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  label{display:flex;flex-direction:column;gap:6px;font-weight:600}
+  input[type="text"],input[type="number"]{
+    background:var(--table);border:1px solid var(--border);border-radius:8px;color:var(--text);
+    padding:10px 12px;outline:none
+  }
+  input::placeholder{color:#7c8794}
+  .actions,.controls,.filters{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  button,.file-btn{
+    background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer
+  }
+  button:hover,.file-btn:hover{opacity:.92}
+  button.danger{background:var(--danger)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .file-btn{position:relative;display:inline-flex;align-items:center;gap:8px}
+  .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .error{color:#ffb4b4;margin-top:8px;min-height:1.2em}
+  .table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px}
+  table{width:100%;border-collapse:separate;border-spacing:0;background:var(--table)}
+  th,td{padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  thead th{position:sticky;top:0;background:#12141a;text-align:left}
+  tbody tr:hover{background:#141720}
+  .row-actions{display:flex;gap:8px}
+  .summary{margin-top:12px;color:var(--muted)}
+  footer{color:var(--muted);text-align:center;border-top:1px solid var(--border)}
+  @media (max-width:640px){
+    th:nth-child(1),td:nth-child(1),th:nth-child(7),td:nth-child(7){display:none}
+  }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Expulsion Dynamics Logger</h1>
+    <p class="sub">Timestamps: YYYY/MM/DD HH:MM:SS · Units: cm, g · 24-hour time</p>
+  </header>
+
+  <main>
+    <section class="card" id="form-card">
+      <h2>New Entry</h2>
+      <form id="entry-form" autocomplete="off">
+        <div class="grid">
+          <label>Participant ID
+            <input type="text" id="pid" required>
+          </label>
+
+          <label>Date/Time
+            <input type="text" id="dt" required placeholder="YYYY/MM/DD HH:MM:SS">
+          </label>
+
+          <label>Distance (cm)
+            <input type="number" id="distance" inputmode="decimal" step="0.1" min="0" required>
+          </label>
+
+          <label>Mass (g)
+            <input type="number" id="mass" inputmode="decimal" step="0.1" min="0" required>
+          </label>
+
+          <label>Trajectory Angle (deg)
+            <input type="number" id="angle" inputmode="decimal" step="0.1" min="0" max="90">
+          </label>
+
+          <label>Notes
+            <input type="text" id="notes" maxlength="500" placeholder="Optional">
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="add-btn">Add entry</button>
+          <button type="button" id="reset-form">Clear form</button>
+        </div>
+
+        <p id="form-error" class="error" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="card" id="controls-card">
+      <h2>Data Controls</h2>
+      <div class="controls">
+        <button id="export-csv">Export CSV</button>
+        <label class="file-btn">
+          Import CSV
+          <input type="file" id="import-csv" accept=".csv" />
+        </label>
+        <button id="download-template">Download blank template</button>
+        <button id="clear-all" class="danger">Clear all data</button>
+      </div>
+
+      <div class="filters">
+        <label>Filter by Participant ID
+          <input type="text" id="filter-pid" placeholder="e.g. P001">
+        </label>
+        <label>Date from
+          <input type="text" id="filter-from" placeholder="YYYY/MM/DD HH:MM:SS">
+        </label>
+        <label>Date to
+          <input type="text" id="filter-to" placeholder="YYYY/MM/DD HH:MM:SS">
+        </label>
+        <button id="apply-filters">Apply filters</button>
+        <button id="clear-filters">Clear filters</button>
+      </div>
+    </section>
+
+    <section class="card" id="table-card">
+      <h2>Entries</h2>
+      <div class="table-wrap">
+        <table id="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Participant ID</th>
+              <th>Date/Time</th>
+              <th>Distance (cm)</th>
+              <th>Mass (g)</th>
+              <th>Normalised (cm/g)</th>
+              <th>Angle (deg)</th>
+              <th>Notes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div class="summary" id="summary"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Local-only app. Data stored in this browser via localStorage. No network calls.</p>
+  </footer>
+
+  <template id="row-template">
+    <tr>
+      <td class="row-index"></td>
+      <td data-key="pid"></td>
+      <td data-key="dt"></td>
+      <td data-key="distance"></td>
+      <td data-key="mass"></td>
+      <td data-key="normalised"></td>
+      <td data-key="angle"></td>
+      <td data-key="notes"></td>
+      <td class="row-actions">
+        <button class="edit">Edit</button>
+        <button class="save" hidden>Save</button>
+        <button class="cancel" hidden>Cancel</button>
+        <button class="delete danger">Delete</button>
+      </td>
+    </tr>
+  </template>
+
+  <script>
+  // Expulsion Dynamics Logger (single-file)
+  const KEY = "expulsion_logger_v1";
+
+  const pad2 = n => String(n).padStart(2, "0");
+
+  function nowAUS() {
+    const d = new Date();
+    const yr = d.getFullYear();
+    const mo = pad2(d.getMonth() + 1);
+    const da = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mm = pad2(d.getMinutes());
+    const ss = pad2(d.getSeconds());
+    return \`\${yr}/\${mo}/\${da} \${hh}:\${mm}:\${ss}\`;
+  }
+
+  function parseTS(ts) {
+    const m = ts.match(/^(\\d{4})\\/(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\s(0\\d|1\\d|2[0-3]):([0-5]\\d):([0-5]\\d)$/);
+    if (!m) return null;
+    const [_, Y, Mo, D, H, Mi, S] = m;
+    const dt = new Date(Number(Y), Number(Mo) - 1, Number(D), Number(H), Number(Mi), Number(S));
+    if (isNaN(dt.getTime())) return null;
+    return dt;
+  }
+
+  function normalised(distance, mass) {
+    const d = Number(distance);
+    const m = Number(mass);
+    if (m <= 0) return 0;
+    return d / m;
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return [];
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data)) return [];
+      return data;
+    } catch {
+      return [];
+    }
+  }
+  function save(data) { localStorage.setItem(KEY, JSON.stringify(data)); }
+
+  const form = document.getElementById("entry-form");
+  const pidEl = document.getElementById("pid");
+  const dtEl = document.getElementById("dt");
+  const distanceEl = document.getElementById("distance");
+  const massEl = document.getElementById("mass");
+  const angleEl = document.getElementById("angle");
+  const notesEl = document.getElementById("notes");
+  const errorEl = document.getElementById("form-error");
+  const exportBtn = document.getElementById("export-csv");
+  const importEl = document.getElementById("import-csv");
+  const clearAllBtn = document.getElementById("clear-all");
+  const downloadTemplateBtn = document.getElementById("download-template");
+  const tbody = document.getElementById("table-body");
+  const rowTpl = document.getElementById("row-template");
+  const summaryEl = document.getElementById("summary");
+  const filterPid = document.getElementById("filter-pid");
+  const filterFrom = document.getElementById("filter-from");
+  const filterTo = document.getElementById("filter-to");
+  const applyFiltersBtn = document.getElementById("apply-filters");
+  const clearFiltersBtn = document.getElementById("clear-filters");
+
+  dtEl.value = nowAUS();
+  notesEl.value = "";
+
+  let entries = load();
+
+  function render(list = entries) {
+    tbody.innerHTML = "";
+    list.forEach((e, idx) => {
+      const row = rowTpl.content.firstElementChild.cloneNode(true);
+      row.querySelector(".row-index").textContent = String(idx + 1);
+      setCell(row, "pid", e.pid);
+      setCell(row, "dt", e.dt);
+      setCell(row, "distance", fixed(e.distance));
+      setCell(row, "mass", fixed(e.mass));
+      setCell(row, "normalised", fixed(e.normalised));
+      setCell(row, "angle", e.angle !== "" && e.angle !== null && e.angle !== undefined ? fixed(e.angle) : "");
+      setCell(row, "notes", e.notes || "");
+
+      const editBtn = row.querySelector(".edit");
+      const saveBtn = row.querySelector(".save");
+      const cancelBtn = row.querySelector(".cancel");
+      const delBtn = row.querySelector(".delete");
+
+      editBtn.addEventListener("click", () => startEdit(row, e));
+      saveBtn.addEventListener("click", () => saveEdit(row, e));
+      cancelBtn.addEventListener("click", () => cancelEdit());
+      delBtn.addEventListener("click", () => deleteEntry(e.id));
+
+      tbody.appendChild(row);
+    });
+    renderSummary(list);
+  }
+
+  function fixed(v){
+    if (v === "" || v === null || v === undefined) return "";
+    const n = Number(v);
+    if (!isFinite(n)) return "";
+    return n.toFixed(2);
+  }
+
+  function setCell(row, key, value){
+    row.querySelector(\`[data-key="\${key}"]\`).textContent = value;
+  }
+
+  function startEdit(row, e){
+    toggleEdit(row, true);
+    editField(row, "pid", e.pid, "text");
+    editField(row, "dt", e.dt, "text");
+    editField(row, "distance", e.distance, "number", {step:"0.1",min:"0"});
+    editField(row, "mass", e.mass, "number", {step:"0.1",min:"0"});
+    editField(row, "angle", e.angle ?? "", "number", {step:"0.1",min:"0",max:"90"});
+    editField(row, "notes", e.notes ?? "", "text");
+  }
+
+  function editField(row, key, value, type, attrs={}){
+    const cell = row.querySelector(\`[data-key="\${key}"]\`);
+    const input = document.createElement("input");
+    input.type = type;
+    input.value = value ?? "";
+    Object.entries(attrs).forEach(([k,v]) => input.setAttribute(k,v));
+    input.style.width = "160px";
+    cell.textContent = "";
+    cell.appendChild(input);
+  }
+
+  function collectEdited(row){
+    const get = key => {
+      const el = row.querySelector(\`[data-key="\${key}"] input\`);
+      return el ? el.value.trim() : row.querySelector(\`[data-key="\${key}"]\`).textContent.trim();
+    };
+    return {
+      pid: get("pid"),
+      dt: get("dt"),
+      distance: get("distance"),
+      mass: get("mass"),
+      angle: get("angle"),
+      notes: get("notes"),
+    };
+  }
+
+  function saveEdit(row, e){
+    const edited = collectEdited(row);
+    const { ok, msg } = validate(edited);
+    if (!ok) { alert(msg); return; }
+
+    e.pid = edited.pid;
+    e.dt = edited.dt;
+    e.distance = Number(edited.distance);
+    e.mass = Number(edited.mass);
+    e.angle = edited.angle === "" ? "" : Number(edited.angle);
+    e.normalised = normalised(e.distance, e.mass);
+    save(entries);
+    render(filtered());
+  }
+
+  function cancelEdit(){
+    render(filtered());
+  }
+
+  function toggleEdit(row, on){
+    row.querySelector(".edit").hidden = on;
+    row.querySelector(".save").hidden = !on;
+    row.querySelector(".cancel").hidden = !on;
+  }
+
+  function deleteEntry(id){
+    if (!confirm("Delete this entry?")) return;
+    entries = entries.filter(x => x.id !== id);
+    save(entries);
+    render(filtered());
+  }
+
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    errorEl.textContent = "";
+    const data = {
+      pid: pidEl.value.trim(),
+      dt: dtEl.value.trim(),
+      distance: distanceEl.value.trim(),
+      mass: massEl.value.trim(),
+      angle: angleEl.value.trim(),
+      notes: notesEl.value.trim()
+    };
+    const { ok, msg } = validate(data);
+    if (!ok) {
+      errorEl.textContent = msg;
+      return;
+    }
+
+    const entry = {
+      id: crypto.randomUUID(),
+      pid: data.pid,
+      dt: data.dt,
+      distance: Number(data.distance),
+      mass: Number(data.mass),
+      angle: data.angle === "" ? "" : Number(data.angle),
+      notes: data.notes,
+    };
+    entry.normalised = normalised(entry.distance, entry.mass);
+
+    entries.push(entry);
+    save(entries);
+    render(filtered());
+
+    form.reset();
+    dtEl.value = nowAUS();
+    notesEl.value = "";
+  });
+
+  document.getElementById("reset-form").addEventListener("click", () => {
+    form.reset();
+    dtEl.value = nowAUS();
+    errorEl.textContent = "";
+  });
+
+  function validate(d){
+    if (!d.pid) return { ok:false, msg:"Participant ID is required." };
+    const dateObj = parseTS(d.dt);
+    if (!dateObj) return { ok:false, msg:"Date/Time must be YYYY/MM/DD HH:MM:SS using 24-hour time." };
+    const dist = Number(d.distance);
+    const mass = Number(d.mass);
+    if (!isFinite(dist) || dist < 0) return { ok:false, msg:"Distance must be a number ≥ 0." };
+    if (!isFinite(mass) || mass <= 0) return { ok:false, msg:"Mass must be a number > 0." };
+    if (d.angle !== "" && (!isFinite(Number(d.angle)) || Number(d.angle) < 0 || Number(d.angle) > 90)) {
+      return { ok:false, msg:"Angle must be between 0 and 90 degrees." };
+    }
+    return { ok:true, msg:"" };
+  }
+
+  const HEADERS = [
+    "Participant ID",
+    "Date/Time",
+    "Distance (cm)",
+    "Mass (g)",
+    "Normalised Distance (cm/g)",
+    "Trajectory Angle (deg)",
+    "Notes"
+  ];
+
+  function toCSV(list){
+    const escape = (v) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      if (/[",\\n]/.test(s)) return \`"\${s.replace(/"/g,'""')}"\`;
+      return s;
+    };
+    const rows = [HEADERS.join(",")];
+    list.forEach(e => {
+      rows.push([
+        e.pid,
+        e.dt,
+        fixed(e.distance),
+        fixed(e.mass),
+        fixed(e.normalised),
+        e.angle === "" ? "" : fixed(e.angle),
+        e.notes ?? ""
+      ].map(escape).join(","));
+    });
+    return rows.join("\\n");
+  }
+
+  function downloadBlob(name, data, type){
+    const blob = new Blob([data], {type});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    a.remove();
+  }
+
+  document.getElementById("export-csv").addEventListener("click", () => {
+    const list = filtered();
+    const csv = toCSV(list);
+    downloadBlob("expulsion_log_sheet.csv", csv, "text/csv;charset=utf-8");
+  });
+
+  downloadTemplateBtn.addEventListener("click", () => {
+    const blank = toCSV([]);
+    downloadBlob("expulsion_log_sheet_template.csv", blank, "text/csv;charset=utf-8");
+  });
+
+  importEl.addEventListener("change", async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const parsed = parseCSV(text);
+    if (!parsed.ok) { alert(parsed.msg); importEl.value=""; return; }
+
+    const newOnes = parsed.rows.map(r => ({
+      id: crypto.randomUUID(),
+      pid: r["Participant ID"],
+      dt: r["Date/Time"],
+      distance: Number(r["Distance (cm)"]),
+      mass: Number(r["Mass (g)"]),
+      angle: r["Trajectory Angle (deg)"] === "" ? "" : Number(r["Trajectory Angle (deg)"]),
+      notes: r["Notes"] ?? ""
+    })).map(e => ({...e, normalised: normalised(e.distance, e.mass)}));
+
+    for (const e of newOnes) {
+      const {ok,msg} = validate(e);
+      if (!ok) { alert("Import failed: " + msg); importEl.value=""; return; }
+    }
+
+    entries.push(...newOnes);
+    save(entries);
+    render(filtered());
+    importEl.value="";
+  });
+
+  function parseCSV(text){
+    const lines = text.replace(/\\r/g,"").split("\\n").filter(x=>x.length>0);
+    if (lines.length === 0) return { ok:false, msg:"CSV is empty." };
+    const header = splitCSVLine(lines[0]);
+    const required = HEADERS;
+    const missing = required.filter(h => !header.includes(h));
+    if (missing.length) return { ok:false, msg:"Missing columns: " + missing.join(", ") };
+
+    const rows = [];
+    for (let i=1;i<lines.length;i++){
+      const cols = splitCSVLine(lines[i]);
+      if (cols.length === 1 && cols[0] === "") continue;
+      const obj = {};
+      header.forEach((h,idx)=> obj[h] = cols[idx] ?? "");
+      rows.push(obj);
+    }
+    return { ok:true, rows };
+  }
+
+  function splitCSVLine(line){
+    const out = [];
+    let cur = "";
+    let inQ = false;
+    for (let i=0;i<line.length;i++){
+      const c = line[i];
+      if (inQ){
+        if (c === '"'){
+          if (line[i+1] === '"'){ cur += '"'; i++; }
+          else { inQ = false; }
+        } else cur += c;
+      } else {
+        if (c === ','){ out.push(cur); cur=""; }
+        else if (c === '"'){ inQ = true; }
+        else cur += c;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  document.getElementById("clear-all").addEventListener("click", () => {
+    if (!confirm("Clear all stored data? This cannot be undone.")) return;
+    entries = [];
+    save(entries);
+    render();
+  });
+
+  function filtered(){
+    const pid = filterPid.value.trim();
+    const f = filterFrom.value.trim();
+    const t = filterTo.value.trim();
+    return entries.filter(e => {
+      if (pid && e.pid !== pid) return false;
+      if (f){
+        const df = parseTS(f);
+        if (!df) return false;
+        if (parseTS(e.dt).getTime() < df.getTime()) return false;
+      }
+      if (t){
+        const dt = parseTS(t);
+        if (!dt) return false;
+        if (parseTS(e.dt).getTime() > dt.getTime()) return false;
+      }
+      return true;
+    });
+  }
+
+  document.getElementById("apply-filters").addEventListener("click", () => render(filtered()));
+  document.getElementById("clear-filters").addEventListener("click", () => {
+    filterPid.value="";
+    filterFrom.value="";
+    filterTo.value="";
+    render(entries);
+  });
+
+  function renderSummary(list){
+    if (list.length === 0){ summaryEl.textContent = "No entries."; return; }
+    const distances = list.map(e => e.distance);
+    const masses = list.map(e => e.mass);
+    const norms = list.map(e => e.normalised);
+    const mean = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+    const min = arr => Math.min(...arr);
+    const max = arr => Math.max(...arr);
+    summaryEl.textContent =
+      \`n=\${list.length} · Distance mean \${mean(distances).toFixed(2)} cm (min \${min(distances).toFixed(2)}, max \${max(distances).toFixed(2)}), \`
+      + \`Mass mean \${mean(masses).toFixed(2)} g, Normalised mean \${mean(norms).toFixed(4)} cm/g.\`;
+  }
+
+  document.getElementById("dt").addEventListener("focus", (e) => {
+    if (!e.target.value) e.target.value = nowAUS();
+  });
+
+  render(entries);
+  </script>
+</body>
+</html>
